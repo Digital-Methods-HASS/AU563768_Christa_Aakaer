@@ -1,0 +1,60 @@
+---
+title: "Wiki_webscrabing_V05"
+author: "Christa Aakær"
+date: "08/01/2021"
+output:
+  word_document: default
+  pdf_document: default
+  html_document: default
+---
+This is a script adapted from 'WikiQuotes_webscrabing_v01' by Magnus Lindholm Nielsen, used under GNU-License Version 3.0, all rights reserved.
+link to teh original script: https://github.com/Digital-Methods-HASS/Wiki_Webscrabing/blob/main/WikiQuotes_webscrabing_v01.Rmd
+Packages used are:
+```{r  echo = T, results = 'hide'}
+library(wordcloud)
+library(RColorBrewer)
+library(rvest)
+library(tidytext)
+library(tidyverse)
+
+```
+
+Fistly, I employ Magnus' webscraber to generate af large dataframe of the relevant data:
+```{r echo = T, results = 'hide'}
+gentag <- 1000 # How many webapages we wish to donwload. 1000 takes approximatly 10-15 minutes
+sum <- 0
+tekst_v <- vector()
+overskrift_v <- vector()
+repeat{
+  wiki_random <- read_html("https://en.wikiquote.org/wiki/Special:Random")
+  tekst_random <- html_text(html_node(wiki_random, 'li'))
+  overskrift_random <- html_text(html_node(wiki_random, 'i'))
+  tekst_v <- append(tekst_v, tekst_random)
+  overskrift_v <- append(overskrift_v, overskrift_random)
+  sum = sum+1
+  if(sum == gentag){
+    break
+  }
+}
+nummer <- sprintf('nummer % d', 1:gentag)
+wiki.dt <- data.frame(nummer, overskrift_v, tekst_v)
+```
+
+Now, I use the 'unnest_tokens' function to create a dataframe with the individual words as observations. This makes further data_processing much easier
+```{r echo = T, results = 'hide'}
+wiki.dt %>% 
+  unnest_tokens(word, tekst_v, token = 'ngrams', n = 1) -> n_gram_Wiki
+```
+
+Unfortunately, several of the words appear to be nonsense. This is because the webscraber is imperfect, and therefore collects unwanted data. We locate and replace these with 'NA', utilizing a Regular Expression. I have choosen '\d+\.\d+|\d+', since most of the unwanted data is random numbers, which appear several places in the document. I have also chosen to ignore observations which appear more than 100 times and less than 3. This does two things: Firstly, it removes most of the outlier observations, which would have a disproportionate impact on the data, and be mostly meaningless (for exsampel, 'the'). Secondly, the webscraber collects several meaningless words which appear once or twice in the dataset (for exsampel, 'tp'). These are also removed, and will not impact the analysis of the quotes. While this is quite crude, it is nonetheless effective.
+Once the data is sufficently cleaned, I utilise the _wordcloud_ command form the _wordcloud_ package, to create a word cloud to visualise the most frequent terms:
+
+```{r}
+n_gram_wiki_clean01 <- n_gram_Wiki %>%
+  mutate(word = str_replace_all(word, regex('(\\d+\\.\\d+|\\d+)'), 'NA'))
+n_gram_wiki_clean02 <- n_gram_wiki_clean01 %>%
+  filter(word != 'NA' & word != 'NA.NA') %>%
+  count(overskrift_v, word) %>%
+  filter(n > 3 & n < 100)
+wordcloud(n_gram_wiki_clean02$word, n_gram_wiki_clean02$n, min.freq = 1, max.words = 30, random.order = FALSE, rot.per = 0.35, colors=brewer.pal(8, "Dark2"))
+```
